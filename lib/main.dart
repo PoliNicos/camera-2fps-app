@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
-import 'package:video_editor/video_editor.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:gallery_saver/gallery_saver.dart';
-
 
 late List<CameraDescription> _cameras;
 
@@ -32,12 +30,16 @@ class Camera2FPS extends StatefulWidget {
 class _Camera2FPSState extends State<Camera2FPS> {
   CameraController? controller;
   bool isRecording = false;
+  bool isCreatingVideo = false;
   ResolutionPreset selectedRes = ResolutionPreset.high;
 
   Timer? _captureTimer;
-  final List<String> _capturedFrames = []; // ✅ FIXED: Aggiunto 'final'
+  final List<String> _capturedFrames = [];
   int _frameCount = 0;
   DateTime? _recordingStartTime;
+
+  // Platform channel per chiamare codice Android nativo
+  static const platform = MethodChannel('com.camera2fps/video');
 
   @override
   void initState() {
@@ -69,6 +71,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
     if (controller == null || !controller!.value.isInitialized) return;
 
     if (isRecording) {
+      // STOP RECORDING
       _captureTimer?.cancel();
       setState(() => isRecording = false);
 
@@ -76,33 +79,21 @@ class _Camera2FPSState extends State<Camera2FPS> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              "✅ $_frameCount frame catturati in ${duration.inSeconds}s\n"
-              "📁 Frame salvati in memoria temporanea"),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'OK',
-            onPressed: () {},
-          ),
-        ),
-      );
-      // ✅ ADD THIS LINE:
-      if (_capturedFrames.isNotEmpty) {
-        await createVideoFromFrames(_capturedFrames);
-      }
+      // Crea il video dai frame catturati
+      await _createVideoFromFrames();
 
-      _capturedFrames.clear();
       _frameCount = 0;
       _recordingStartTime = null;
     } else {
+      // START RECORDING
+      _capturedFrames.clear();
       setState(() {
         isRecording = true;
         _frameCount = 0;
         _recordingStartTime = DateTime.now();
       });
 
+      // Cattura frame ogni 500ms = 2 FPS
       _captureTimer = Timer.periodic(
           const Duration(milliseconds: 500), (timer) async {
         await _captureFrame();
@@ -120,7 +111,6 @@ class _Camera2FPSState extends State<Camera2FPS> {
       final String filePath = '${appDir.path}/frame_$timestamp.jpg';
 
       final XFile imageFile = await controller!.takePicture();
-
       await File(imageFile.path).copy(filePath);
 
       _capturedFrames.add(filePath);
@@ -137,37 +127,68 @@ class _Camera2FPSState extends State<Camera2FPS> {
     }
   }
 
-  
-  Future<void> createVideoFromFrames(List<String> framePaths) async {
-    if (framePaths.isEmpty) return;
+  Future<void> _createVideoFromFrames() async {
+    if (_capturedFrames.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("❌ Nessun frame catturato!")),
+        );
+      }
+      return;
+    }
 
-    final Directory tempDir = await getTemporaryDirectory();
-    final String videoPath =
-        '${tempDir.path}/timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4';
-
-    // Prepare ImageSequence
-    final List<ImageSequenceEntry> sequence = framePaths
-        .map((path) => ImageSequenceEntry(path: path, duration: Duration(milliseconds: 500)))
-        .toList(); // 500ms → 2 FPS
+    setState(() => isCreatingVideo = true);
 
     try {
-      await VideoEditor.createVideoFromImages(
-        images: sequence,
-        output: videoPath,
-      );
+      // Ottieni directory per salvare il video
+      final Directory? externalDir = await getExternalStorageDirectory();
+      final String outputPath =
+          '${externalDir!.path}/timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-      // Save to gallery
-      final success = await GallerySaver.saveVideo(videoPath, albumName: 'Camera2FPS');
-      if (success == true) {
-        debugPrint("🎉 Video saved to gallery: $videoPath");
-      } else {
-        debugPrint("❌ Failed to save video to gallery");
+      debugPrint("🎬 Creazione video con ${_capturedFrames.length} frame...");
+
+      // Chiama il codice nativo Android per creare il video
+      final String? result = await platform.invokeMethod('createVideo', {
+        'frames': _capturedFrames,
+        'outputPath': outputPath,
+        'fps': 2,
+      });
+
+      setState(() => isCreatingVideo = false);
+
+      if (mounted && result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✅ Video creato!\n$result"),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
       }
+
+      // Pulisci i frame temporanei
+      for (var framePath in _capturedFrames) {
+        try {
+          await File(framePath).delete();
+        } catch (e) {
+          debugPrint("⚠️ Errore eliminazione frame: $e");
+        }
+      }
+      _capturedFrames.clear();
     } catch (e) {
-      debugPrint("❌ Error creating video: $e");
+      setState(() => isCreatingVideo = false);
+      debugPrint("❌ Errore creazione video: $e");
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("❌ Errore: $e")),
+        );
+      }
     }
   }
-
 
   @override
   void dispose() {
@@ -200,7 +221,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("🎬 Camera 2 FPS (Time-Lapse)"),
+        title: const Text("🎬 Camera 2 FPS → Video"),
         backgroundColor: Colors.black,
         actions: [
           DropdownButton<ResolutionPreset>(
@@ -292,11 +313,44 @@ class _Camera2FPSState extends State<Camera2FPS> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      "REC • Frame: $_frameCount",
+                      "REC 2 FPS • Frame: $_frameCount",
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (isCreatingVideo)
+            Positioned(
+              top: 20,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      "Creazione video...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
@@ -308,31 +362,34 @@ class _Camera2FPSState extends State<Camera2FPS> {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 50),
               child: GestureDetector(
-                onTap: toggleRecording,
-                child: Container(
-                  height: 80,
-                  width: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isRecording ? Colors.red : Colors.white)
-                            .withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height: isRecording ? 30 : 60,
-                      width: isRecording ? 30 : 60,
-                      decoration: BoxDecoration(
-                        color: isRecording ? Colors.red : Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          isRecording ? 8 : 30,
+                onTap: isCreatingVideo ? null : toggleRecording,
+                child: Opacity(
+                  opacity: isCreatingVideo ? 0.5 : 1.0,
+                  child: Container(
+                    height: 80,
+                    width: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isRecording ? Colors.red : Colors.white)
+                              .withOpacity(0.3),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: isRecording ? 30 : 60,
+                        width: isRecording ? 30 : 60,
+                        decoration: BoxDecoration(
+                          color: isRecording ? Colors.red : Colors.white,
+                          borderRadius: BorderRadius.circular(
+                            isRecording ? 8 : 30,
+                          ),
                         ),
                       ),
                     ),
@@ -341,7 +398,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
               ),
             ),
           ),
-          if (!isRecording)
+          if (!isRecording && !isCreatingVideo)
             Positioned(
               bottom: 150,
               child: Container(
@@ -352,7 +409,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Text(
-                  "⏱️ 2 Frame/Secondo",
+                  "🎬 Cattura a 2 FPS → Crea Video MP4",
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 14,

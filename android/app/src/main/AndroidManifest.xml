@@ -6,6 +6,7 @@
 
     <uses-feature android:name="android.hardware.camera" android:required="true"/>
     <application
+        android:requestLegacyExternalStorage="true"
         android:label="camera_2fps_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

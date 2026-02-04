@@ -1,5 +1,5 @@
 name: camera_2fps_app
-description: App Flutter per registrazione video time-lapse a 2 FPS
+description: App Flutter per registrazione video time-lapse a 2 FPS con creazione video nativa
 publish_to: 'none'
 version: 1.0.0+1
 
