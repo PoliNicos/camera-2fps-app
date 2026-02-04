@@ -10,6 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   
+  ffmpeg_kit_flutter: ^4.5.1
+  gallery_saver: ^2.3.2
+
   # Camera access
   camera: ^0.10.5+5
   
