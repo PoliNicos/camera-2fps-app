@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:video_editor/video_editor.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
 import 'package:gallery_saver/gallery_saver.dart';
+
 
 late List<CameraDescription> _cameras;
 
@@ -88,7 +89,9 @@ class _Camera2FPSState extends State<Camera2FPS> {
         ),
       );
       // ✅ ADD THIS LINE:
-      await createVideoFromFrames(List.from(_capturedFrames));
+      if (_capturedFrames.isNotEmpty) {
+        await createVideoFromFrames(_capturedFrames);
+      }
 
       _capturedFrames.clear();
       _frameCount = 0;
@@ -134,27 +137,35 @@ class _Camera2FPSState extends State<Camera2FPS> {
     }
   }
 
+  
   Future<void> createVideoFromFrames(List<String> framePaths) async {
     if (framePaths.isEmpty) return;
 
     final Directory tempDir = await getTemporaryDirectory();
-    final String videoPath = '${tempDir.path}/timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final String videoPath =
+        '${tempDir.path}/timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-    // FFmpeg expects images like frame_%d.jpg, so we rename them temporarily
-    for (int i = 0; i < framePaths.length; i++) {
-      final newPath = '${tempDir.path}/frame_${i.toString().padLeft(5, '0')}.jpg';
-      await File(framePaths[i]).copy(newPath);
-      framePaths[i] = newPath;
+    // Prepare ImageSequence
+    final List<ImageSequenceEntry> sequence = framePaths
+        .map((path) => ImageSequenceEntry(path: path, duration: Duration(milliseconds: 500)))
+        .toList(); // 500ms → 2 FPS
+
+    try {
+      await VideoEditor.createVideoFromImages(
+        images: sequence,
+        output: videoPath,
+      );
+
+      // Save to gallery
+      final success = await GallerySaver.saveVideo(videoPath, albumName: 'Camera2FPS');
+      if (success == true) {
+        debugPrint("🎉 Video saved to gallery: $videoPath");
+      } else {
+        debugPrint("❌ Failed to save video to gallery");
+      }
+    } catch (e) {
+      debugPrint("❌ Error creating video: $e");
     }
-
-    // Build FFmpeg command: 2 FPS
-    final cmd = '-r 2 -i ${tempDir.path}/frame_%05d.jpg -c:v libx264 -pix_fmt yuv420p $videoPath';
-
-    await FFmpegKit.execute(cmd);
-
-    // Save to gallery
-    await GallerySaver.saveVideo(videoPath, albumName: 'Camera2FPS');
-    debugPrint("🎉 Video saved to gallery: $videoPath");
   }
 
 

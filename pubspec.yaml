@@ -10,7 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   
-  ffmpeg_kit_flutter_min_gpl: ^6.0.3
+  video_editor: ^1.5.0       # For video creation from images
+
   gallery_saver: ^2.3.2
 
   # Camera access

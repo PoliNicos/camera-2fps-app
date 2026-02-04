@@ -2,8 +2,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven("https://github.com/arthenica/ffmpeg-kit/raw/main/prebuilt/android")
     }
 }
+
 
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
