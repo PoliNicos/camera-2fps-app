@@ -75,7 +75,8 @@ class _Camera2FPSState extends State<Camera2FPS> {
       _captureTimer?.cancel();
       setState(() => isRecording = false);
 
-      final duration = DateTime.now().difference(_recordingStartTime!);
+      // Delete this line:
+      // final duration = DateTime.now().difference(_recordingStartTime!);
 
       if (!mounted) return;
 
