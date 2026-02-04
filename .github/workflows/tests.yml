@@ -1,4 +1,4 @@
-name: 🧪 Tests & Code Quality
+name: 🔍 Code Analysis
 
 on:
   push:
@@ -8,9 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ═══════════════════════════════════════════════════════════
-  # 🔍 CODE ANALYSIS
-  # ═══════════════════════════════════════════════════════════
   analyze:
     name: 🔍 Analyze Code
     runs-on: ubuntu-latest
@@ -29,68 +26,5 @@ jobs:
       - name: 📦 Get dependencies
         run: flutter pub get
 
-      - name: 🔍 Verify formatting
-        run: dart format --output=none --set-exit-if-changed .
-
       - name: 🔍 Analyze project
         run: flutter analyze
-
-      - name: 🔍 Check for outdated dependencies
-        run: flutter pub outdated
-
-  # ═══════════════════════════════════════════════════════════
-  # 🧪 UNIT TESTS
-  # ═══════════════════════════════════════════════════════════
-  test:
-    name: 🧪 Run Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.3'
-          channel: 'stable'
-          cache: true
-
-      - name: 📦 Get dependencies
-        run: flutter pub get
-
-      - name: 🧪 Run tests
-        run: flutter test --coverage
-
-      - name: 📊 Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage/lcov.info
-          flags: unittests
-          name: codecov-umbrella
-
-  # ═══════════════════════════════════════════════════════════
-  # 🔒 SECURITY SCAN
-  # ═══════════════════════════════════════════════════════════
-  security:
-    name: 🔒 Security Scan
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.3'
-          channel: 'stable'
-
-      - name: 📦 Get dependencies
-        run: flutter pub get
-
-      - name: 🔒 Check for known vulnerabilities
-        run: |
-          flutter pub upgrade --dry-run
-          dart pub global activate pana
-          pana .

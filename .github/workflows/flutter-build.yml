@@ -1,16 +1,13 @@
-name: 🎬 Build Flutter Camera App
+name: 🤖 Build Android APK
 
 on:
   push:
     branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # Permette di avviare manualmente
+  workflow_dispatch:
 
 jobs:
-  # ═══════════════════════════════════════════════════════════
-  # 🤖 BUILD ANDROID APK
-  # ═══════════════════════════════════════════════════════════
   build-android:
     name: 🤖 Build Android APK
     runs-on: ubuntu-latest
@@ -28,50 +25,6 @@ jobs:
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.3' # Usa l'ultima versione stabile
-          channel: 'stable'
-          cache: true
-
-      - name: 📦 Install dependencies
-        run: flutter pub get
-
-      - name: 🔍 Analyze code
-        run: flutter analyze
-
-      - name: 🔨 Build APK (Release)
-        run: flutter build apk --release
-
-      - name: 🔨 Build APK (Debug)
-        run: flutter build apk --debug
-
-      - name: 📤 Upload APK Release
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk-release
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
-
-      - name: 📤 Upload APK Debug
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
-          retention-days: 7
-
-  # ═══════════════════════════════════════════════════════════
-  # 🍎 BUILD iOS (richiede macOS runner - potrebbe avere costi)
-  # ═══════════════════════════════════════════════════════════
-  build-ios:
-    name: 🍎 Build iOS
-    runs-on: macos-latest
-    
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
           flutter-version: '3.24.3'
           channel: 'stable'
           cache: true
@@ -79,119 +32,26 @@ jobs:
       - name: 📦 Install dependencies
         run: flutter pub get
 
-      - name: 🔍 Analyze code
-        run: flutter analyze
+      - name: 🔨 Build APK Release
+        run: flutter build apk --release --split-per-abi
 
-      - name: 🔨 Build iOS (No Codesign)
-        run: flutter build ios --release --no-codesign
-
-      - name: 📤 Upload iOS Build
+      - name: 📤 Upload APK arm64-v8a
         uses: actions/upload-artifact@v4
         with:
-          name: ios-build
-          path: build/ios/iphoneos/Runner.app
+          name: app-arm64-v8a-release
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           retention-days: 30
 
-  # ═══════════════════════════════════════════════════════════
-  # 🌐 BUILD WEB (opzionale)
-  # ═══════════════════════════════════════════════════════════
-  build-web:
-    name: 🌐 Build Web
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.3'
-          channel: 'stable'
-          cache: true
-
-      - name: 📦 Install dependencies
-        run: flutter pub get
-
-      - name: 🔨 Build Web
-        run: flutter build web --release
-
-      - name: 📤 Upload Web Build
+      - name: 📤 Upload APK armeabi-v7a
         uses: actions/upload-artifact@v4
         with:
-          name: web-build
-          path: build/web/
+          name: app-armeabi-v7a-release
+          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
           retention-days: 30
 
-  # ═══════════════════════════════════════════════════════════
-  # 🐧 BUILD LINUX (opzionale)
-  # ═══════════════════════════════════════════════════════════
-  build-linux:
-    name: 🐧 Build Linux
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🔧 Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.3'
-          channel: 'stable'
-          cache: true
-
-      - name: 🛠️ Enable Linux desktop
-        run: flutter config --enable-linux-desktop
-
-      - name: 📦 Install dependencies
-        run: flutter pub get
-
-      - name: 🔨 Build Linux
-        run: flutter build linux --release
-
-      - name: 📤 Upload Linux Build
+      - name: 📤 Upload APK x86_64
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build
-          path: build/linux/x64/release/bundle/
-          retention-days: 30
-
-  # ═══════════════════════════════════════════════════════════
-  # 🪟 BUILD WINDOWS (opzionale)
-  # ═══════════════════════════════════════════════════════════
-  build-windows:
-    name: 🪟 Build Windows
-    runs-on: windows-latest
-    
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🐦 Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.3'
-          channel: 'stable'
-          cache: true
-
-      - name: 🛠️ Enable Windows desktop
-        run: flutter config --enable-windows-desktop
-
-      - name: 📦 Install dependencies
-        run: flutter pub get
-
-      - name: 🔨 Build Windows
-        run: flutter build windows --release
-
-      - name: 📤 Upload Windows Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: build/windows/x64/runner/Release/
+          name: app-x86_64-release
+          path: build/app/outputs/flutter-apk/app-x86_64-release.apk
           retention-days: 30
