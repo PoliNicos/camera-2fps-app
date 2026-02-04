@@ -27,6 +27,8 @@ linter:
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
 analyzer:
-  fatal-warnings: false
   errors:
     unused_local_variable: ignore
+    unused_field: ignore
+    # This will silence the "unsupported_option" warning too
+    unsupported_option_with_legal_values: ignore
