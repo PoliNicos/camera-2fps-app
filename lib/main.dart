@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -13,9 +14,10 @@ Future<void> main() async {
   } catch (e) {
     debugPrint("❌ Errore inizializzazione camere: $e");
   }
-  runApp(
-    const MaterialApp(home: Camera2FPS(), debugShowCheckedModeBanner: false),
-  );
+  runApp(const MaterialApp(
+    home: Camera2FPS(),
+    debugShowCheckedModeBanner: false,
+  ));
 }
 
 class Camera2FPS extends StatefulWidget {
@@ -28,15 +30,16 @@ class Camera2FPS extends StatefulWidget {
 class _Camera2FPSState extends State<Camera2FPS> {
   CameraController? controller;
   bool isRecording = false;
+  bool isCreatingVideo = false;
   ResolutionPreset selectedRes = ResolutionPreset.high;
 
-  // ═══════════════════════════════════════════════════════════
-  // VARIABILI PER TIME-LAPSE 2 FPS
-  // ═══════════════════════════════════════════════════════════
   Timer? _captureTimer;
-  List<String> _capturedFrames = [];
+  final List<String> _capturedFrames = [];
   int _frameCount = 0;
   DateTime? _recordingStartTime;
+
+  // Platform channel per chiamare codice Android nativo
+  static const platform = MethodChannel('com.camera2fps/video');
 
   @override
   void initState() {
@@ -52,7 +55,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
     controller = CameraController(
       _cameras[0],
       res,
-      enableAudio: false, // No audio per time-lapse
+      enableAudio: false,
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
@@ -68,9 +71,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
     if (controller == null || !controller!.value.isInitialized) return;
 
     if (isRecording) {
-      // ═══════════════════════════════════════════════════════
-      // STOP REGISTRAZIONE
-      // ═══════════════════════════════════════════════════════
+      // STOP RECORDING
       _captureTimer?.cancel();
       setState(() => isRecording = false);
 
@@ -78,37 +79,23 @@ class _Camera2FPSState extends State<Camera2FPS> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "✅ $_frameCount frame catturati in ${duration.inSeconds}s\n"
-            "📁 Frame salvati in memoria temporanea",
-          ),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(label: 'OK', onPressed: () {}),
-        ),
-      );
+      // Crea il video dai frame catturati
+      await _createVideoFromFrames();
 
-      // Opzionale: qui puoi chiamare _createVideoFromFrames()
-      // se hai implementato FFmpeg
-
-      _capturedFrames.clear();
       _frameCount = 0;
       _recordingStartTime = null;
     } else {
-      // ═══════════════════════════════════════════════════════
-      // START REGISTRAZIONE - Cattura frame ogni 500ms (2 FPS)
-      // ═══════════════════════════════════════════════════════
+      // START RECORDING
+      _capturedFrames.clear();
       setState(() {
         isRecording = true;
         _frameCount = 0;
         _recordingStartTime = DateTime.now();
       });
 
-      // Timer che cattura un frame ogni 500ms = 2 FPS
-      _captureTimer = Timer.periodic(const Duration(milliseconds: 500), (
-        timer,
-      ) async {
+      // Cattura frame ogni 500ms = 2 FPS
+      _captureTimer = Timer.periodic(
+          const Duration(milliseconds: 500), (timer) async {
         await _captureFrame();
       });
     }
@@ -118,21 +105,16 @@ class _Camera2FPSState extends State<Camera2FPS> {
     if (controller == null || !controller!.value.isInitialized) return;
 
     try {
-      // Ottieni directory temporanea
       final Directory appDir = await getTemporaryDirectory();
-      final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final String timestamp =
+          DateTime.now().millisecondsSinceEpoch.toString();
       final String filePath = '${appDir.path}/frame_$timestamp.jpg';
 
-      // Cattura foto
       final XFile imageFile = await controller!.takePicture();
-
-      // Copia nella directory permanente
       await File(imageFile.path).copy(filePath);
 
-      // Aggiungi alla lista
       _capturedFrames.add(filePath);
 
-      // Aggiorna contatore (solo se ancora in registrazione)
       if (mounted && isRecording) {
         setState(() {
           _frameCount++;
@@ -145,43 +127,68 @@ class _Camera2FPSState extends State<Camera2FPS> {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // (OPZIONALE) CONVERTI FRAME IN VIDEO CON FFMPEG
-  // Decommenta se hai aggiunto ffmpeg_kit_flutter al pubspec.yaml
-  // ═══════════════════════════════════════════════════════════
-  /*
   Future<void> _createVideoFromFrames() async {
-    if (_capturedFrames.isEmpty) return;
-    
-    final Directory appDir = await getApplicationDocumentsDirectory();
-    final String outputPath = '${appDir.path}/timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    
-    // Pattern per le immagini
-    final String pattern = '${(await getTemporaryDirectory()).path}/frame_*.jpg';
-    
-    // Comando FFmpeg: unisce frame a 2 FPS
-    final String command = '-framerate 2 -pattern_type glob -i "$pattern" -c:v libx264 -pix_fmt yuv420p "$outputPath"';
-    
+    if (_capturedFrames.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("❌ Nessun frame catturato!")),
+        );
+      }
+      return;
+    }
+
+    setState(() => isCreatingVideo = true);
+
     try {
-      await FFmpegKit.execute(command).then((session) async {
-        final returnCode = await session.getReturnCode();
-        if (returnCode!.isValueSuccess()) {
-          debugPrint("✅ Video creato: $outputPath");
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Video salvato: $outputPath")),
-            );
-          }
-        } else {
-          debugPrint("❌ Errore creazione video");
-        }
+      // Ottieni directory per salvare il video
+      final Directory? externalDir = await getExternalStorageDirectory();
+      final String outputPath =
+          '${externalDir!.path}/timelapse_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+      debugPrint("🎬 Creazione video con ${_capturedFrames.length} frame...");
+
+      // Chiama il codice nativo Android per creare il video
+      final String? result = await platform.invokeMethod('createVideo', {
+        'frames': _capturedFrames,
+        'outputPath': outputPath,
+        'fps': 2,
       });
+
+      setState(() => isCreatingVideo = false);
+
+      if (mounted && result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✅ Video creato!\n$result"),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+
+      // Pulisci i frame temporanei
+      for (var framePath in _capturedFrames) {
+        try {
+          await File(framePath).delete();
+        } catch (e) {
+          debugPrint("⚠️ Errore eliminazione frame: $e");
+        }
+      }
+      _capturedFrames.clear();
     } catch (e) {
-      debugPrint("❌ Errore FFmpeg: $e");
+      setState(() => isCreatingVideo = false);
+      debugPrint("❌ Errore creazione video: $e");
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("❌ Errore: $e")),
+        );
+      }
     }
   }
-  */
 
   @override
   void dispose() {
@@ -214,12 +221,9 @@ class _Camera2FPSState extends State<Camera2FPS> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("🎬 Camera 2 FPS (Time-Lapse)"),
+        title: const Text("🎬 Camera 2 FPS → Video"),
         backgroundColor: Colors.black,
         actions: [
-          // ═══════════════════════════════════════════════════════
-          // MENU RISOLUZIONE
-          // ═══════════════════════════════════════════════════════
           DropdownButton<ResolutionPreset>(
             value: selectedRes,
             dropdownColor: Colors.grey[900],
@@ -228,19 +232,18 @@ class _Camera2FPSState extends State<Camera2FPS> {
               fontWeight: FontWeight.bold,
             ),
             underline: Container(),
-            items:
-                [
-                  ResolutionPreset.low,
-                  ResolutionPreset.medium,
-                  ResolutionPreset.high,
-                  ResolutionPreset.veryHigh,
-                  ResolutionPreset.ultraHigh,
-                ].map((res) {
-                  return DropdownMenuItem(
-                    value: res,
-                    child: Text(res.toString().split('.').last.toUpperCase()),
-                  );
-                }).toList(),
+            items: [
+              ResolutionPreset.low,
+              ResolutionPreset.medium,
+              ResolutionPreset.high,
+              ResolutionPreset.veryHigh,
+              ResolutionPreset.ultraHigh,
+            ].map((res) {
+              return DropdownMenuItem(
+                value: res,
+                child: Text(res.toString().split('.').last.toUpperCase()),
+              );
+            }).toList(),
             onChanged: (val) {
               if (val != null && !isRecording) {
                 setState(() => selectedRes = val);
@@ -249,8 +252,7 @@ class _Camera2FPSState extends State<Camera2FPS> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      "⚠️ Ferma la registrazione prima di cambiare risoluzione",
-                    ),
+                        "⚠️ Ferma la registrazione prima di cambiare risoluzione"),
                     duration: Duration(seconds: 2),
                   ),
                 );
@@ -263,27 +265,18 @@ class _Camera2FPSState extends State<Camera2FPS> {
       body: Stack(
         alignment: Alignment.center,
         children: [
-          // ═══════════════════════════════════════════════════════
-          // ANTEPRIMA CAMERA
-          // ═══════════════════════════════════════════════════════
           ClipRect(
             child: AspectRatio(
               aspectRatio: controller!.value.aspectRatio,
               child: CameraPreview(controller!),
             ),
           ),
-
-          // ═══════════════════════════════════════════════════════
-          // INDICATORE REGISTRAZIONE
-          // ═══════════════════════════════════════════════════════
           if (isRecording)
             Positioned(
               top: 20,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.red.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(25),
@@ -298,7 +291,6 @@ class _Camera2FPSState extends State<Camera2FPS> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Pallino rosso lampeggiante
                     TweenAnimationBuilder(
                       tween: Tween<double>(begin: 0, end: 1),
                       duration: const Duration(milliseconds: 800),
@@ -308,21 +300,20 @@ class _Camera2FPSState extends State<Camera2FPS> {
                           height: 12,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(
-                              value > 0.5 ? 1.0 : 0.3,
-                            ),
+                            color: Colors.white
+                                .withOpacity(value > 0.5 ? 1.0 : 0.3),
                           ),
                         );
                       },
                       onEnd: () {
                         if (mounted && isRecording) {
-                          setState(() {}); // Riavvia animazione
+                          setState(() {});
                         }
                       },
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      "REC • Frame: $_frameCount",
+                      "REC 2 FPS • Frame: $_frameCount",
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -333,40 +324,72 @@ class _Camera2FPSState extends State<Camera2FPS> {
                 ),
               ),
             ),
-
-          // ═══════════════════════════════════════════════════════
-          // PULSANTE REGISTRAZIONE
-          // ═══════════════════════════════════════════════════════
+          if (isCreatingVideo)
+            Positioned(
+              top: 20,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      "Creazione video...",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.only(bottom: 50),
               child: GestureDetector(
-                onTap: toggleRecording,
-                child: Container(
-                  height: 80,
-                  width: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isRecording ? Colors.red : Colors.white)
-                            .withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height: isRecording ? 30 : 60,
-                      width: isRecording ? 30 : 60,
-                      decoration: BoxDecoration(
-                        color: isRecording ? Colors.red : Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          isRecording ? 8 : 30,
+                onTap: isCreatingVideo ? null : toggleRecording,
+                child: Opacity(
+                  opacity: isCreatingVideo ? 0.5 : 1.0,
+                  child: Container(
+                    height: 80,
+                    width: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isRecording ? Colors.red : Colors.white)
+                              .withOpacity(0.3),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: isRecording ? 30 : 60,
+                        width: isRecording ? 30 : 60,
+                        decoration: BoxDecoration(
+                          color: isRecording ? Colors.red : Colors.white,
+                          borderRadius: BorderRadius.circular(
+                            isRecording ? 8 : 30,
+                          ),
                         ),
                       ),
                     ),
@@ -375,25 +398,22 @@ class _Camera2FPSState extends State<Camera2FPS> {
               ),
             ),
           ),
-
-          // ═══════════════════════════════════════════════════════
-          // INFO 2 FPS
-          // ═══════════════════════════════════════════════════════
-          if (!isRecording)
+          if (!isRecording && !isCreatingVideo)
             Positioned(
               bottom: 150,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Text(
-                  "⏱️ 2 Frame/Secondo",
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  "🎬 Cattura a 2 FPS → Crea Video MP4",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ),
