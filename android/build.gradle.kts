@@ -23,12 +23,17 @@ tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
 subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty("android")) {
-            project.android {
-                if (namespace == null) {
-                    namespace project.group
-                }
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library") ||
+            plugins.hasPlugin("com.android.application")) {
+
+            extensions.findByName("android")?.let { ext ->
+                try {
+                    val androidExt = ext as com.android.build.gradle.BaseExtension
+                    if (androidExt.namespace == null) {
+                        androidExt.namespace = project.group.toString()
+                    }
+                } catch (_: Exception) {}
             }
         }
     }
