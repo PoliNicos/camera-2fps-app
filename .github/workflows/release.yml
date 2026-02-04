@@ -1,0 +1,148 @@
+name: 🚀 Release Build & Deploy
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Trigger su tag tipo v1.0.0
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versione (es: 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  # ═══════════════════════════════════════════════════════════
+  # 🏷️ CREATE RELEASE
+  # ═══════════════════════════════════════════════════════════
+  create-release:
+    name: 🏷️ Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          body: |
+            ## 🎬 Camera 2 FPS App - Release
+            
+            ### 📥 Download:
+            - **Android APK**: Vedi assets sotto
+            - **iOS**: Build disponibile (richiede firma)
+            
+            ### ✨ Features:
+            - Registrazione time-lapse a 2 FPS
+            - Selezione risoluzione camera
+            - UI minimalista e intuitiva
+            
+            ### 📝 Changelog:
+            - Prima release
+
+  # ═══════════════════════════════════════════════════════════
+  # 🤖 BUILD & UPLOAD ANDROID
+  # ═══════════════════════════════════════════════════════════
+  build-and-release-android:
+    name: 🤖 Build Android & Upload to Release
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.3'
+          channel: 'stable'
+
+      - name: 📦 Get dependencies
+        run: flutter pub get
+
+      - name: 🔨 Build APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: 🔨 Build App Bundle
+        run: flutter build appbundle --release
+
+      - name: 📤 Upload APK arm64-v8a to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          asset_name: camera-2fps-arm64-v8a.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: 📤 Upload APK armeabi-v7a to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          asset_name: camera-2fps-armeabi-v7a.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: 📤 Upload APK x86_64 to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: build/app/outputs/flutter-apk/app-x86_64-release.apk
+          asset_name: camera-2fps-x86_64.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: 📤 Upload App Bundle to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: build/app/outputs/bundle/release/app-release.aab
+          asset_name: camera-2fps-bundle.aab
+          asset_content_type: application/octet-stream
+
+  # ═══════════════════════════════════════════════════════════
+  # 🍎 BUILD iOS (opzionale, commentato per costi)
+  # ═══════════════════════════════════════════════════════════
+  # build-and-release-ios:
+  #   name: 🍎 Build iOS
+  #   needs: create-release
+  #   runs-on: macos-latest
+  #   
+  #   steps:
+  #     - name: 📥 Checkout
+  #       uses: actions/checkout@v4
+  # 
+  #     - name: 🐦 Setup Flutter
+  #       uses: subosito/flutter-action@v2
+  #       with:
+  #         flutter-version: '3.24.3'
+  #         channel: 'stable'
+  # 
+  #     - name: 📦 Get dependencies
+  #       run: flutter pub get
+  # 
+  #     - name: 🔨 Build iOS
+  #       run: flutter build ios --release --no-codesign
