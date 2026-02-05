@@ -7,7 +7,11 @@ plugins {
 
 android {
     namespace = "com.tuonome.camera_2fps_app"
-    compileSdk = flutter.compileSdkVersion
+    
+    // ✅ FORZA SDK 34 (sovrascrive flutter.compileSdkVersion)
+    compileSdk = 34
+    
+    // ✅ Usa NDK da Flutter (va bene)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -20,20 +24,22 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.tuonome.camera_2fps_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        
+        // ✅ FORZA minSdk 21 (compatibilità Android 5.0+)
+        minSdk = 21
+        
+        // ✅ FORZA targetSdk 34
+        targetSdk = 34
+        
+        // ✅ Usa versionCode e versionName da Flutter (va bene)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Signing with the debug keys for now
             signingConfig = signingConfigs.getByName("debug")
         }
     }

@@ -1,4 +1,4 @@
-package com.example.camera_2fps_app
+package com.tuonome.camera_2fps_app  // ✅ Deve corrispondere a namespace in build.gradle.kts
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
