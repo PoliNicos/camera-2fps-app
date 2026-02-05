@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.tuonome.camera_2fps_app"
+    namespace = "com.example.camera_2fps_app"
     
     // ✅ FORZA SDK 34 (sovrascrive flutter.compileSdkVersion)
     compileSdk = 34

@@ -1,4 +1,5 @@
-package com.tuonome.camera_2fps_app  // ✅ Deve corrispondere a namespace in build.gradle.kts
+
+package com.example.camera_2fps_app
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -10,8 +11,6 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
-import java.nio.ByteBuffer
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.camera2fps/video"
@@ -43,46 +42,40 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun createVideoFromImages(imagePaths: List<String>, outputPath: String, fps: Int) {
-        Log.d("VideoCreator", "Starting video creation with ${imagePaths.size} frames at $fps FPS")
+        Log.d("VideoCreator", "Starting video creation with \${imagePaths.size} frames at \$fps FPS")
 
-        // Leggi la prima immagine per ottenere dimensioni
         val firstBitmap = BitmapFactory.decodeFile(imagePaths[0])
         val width = firstBitmap.width
         val height = firstBitmap.height
         firstBitmap.recycle()
 
-        Log.d("VideoCreator", "Video dimensions: ${width}x${height}")
+        Log.d("VideoCreator", "Video dimensions: \${width}x\${height}")
 
-        // Configura MediaFormat
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000) // 2 Mbps
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
         format.setInteger(MediaFormat.KEY_FRAME_RATE, fps)
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
 
-        // Crea encoder
         val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         encoder.start()
 
-        // Crea muxer
         val muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         var trackIndex = -1
         var muxerStarted = false
 
         val bufferInfo = MediaCodec.BufferInfo()
-        val frameDurationUs = 1_000_000L / fps // Microseconds per frame
+        val frameDurationUs = 1_000_000L / fps
 
         try {
-            // Processa ogni frame
             for ((index, imagePath) in imagePaths.withIndex()) {
                 val bitmap = BitmapFactory.decodeFile(imagePath)
                 if (bitmap == null) {
-                    Log.w("VideoCreator", "Failed to load image: $imagePath")
+                    Log.w("VideoCreator", "Failed to load image: \$imagePath")
                     continue
                 }
 
-                // Converti bitmap in YUV
                 val inputBuffer = encoder.getInputBuffer(encoder.dequeueInputBuffer(-1))
                 if (inputBuffer != null) {
                     val yuvData = bitmapToYUV420(bitmap, width, height)
@@ -101,7 +94,6 @@ class MainActivity : FlutterActivity() {
 
                 bitmap.recycle()
 
-                // Drain encoder
                 while (true) {
                     val outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 0)
                     
@@ -133,14 +125,12 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                Log.d("VideoCreator", "Processed frame ${index + 1}/${imagePaths.size}")
+                Log.d("VideoCreator", "Processed frame \${index + 1}/\${imagePaths.size}")
             }
 
-            // Segnala fine stream
             val inputBufferIndex = encoder.dequeueInputBuffer(-1)
             encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
 
-            // Drain finale
             while (true) {
                 val outputBufferIndex = encoder.dequeueOutputBuffer(bufferInfo, 10000)
                 if (outputBufferIndex >= 0) {
@@ -160,7 +150,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-            Log.d("VideoCreator", "Video creation completed: $outputPath")
+            Log.d("VideoCreator", "Video creation completed: \$outputPath")
         } finally {
             encoder.stop()
             encoder.release()
@@ -188,7 +178,6 @@ class MainActivity : FlutterActivity() {
                 val g = (pixel shr 8) and 0xff
                 val b = pixel and 0xff
 
-                // RGB to YUV conversion
                 val y = ((66 * r + 129 * g + 25 * b + 128) shr 8) + 16
                 val u = ((-38 * r - 74 * g + 112 * b + 128) shr 8) + 128
                 val v = ((112 * r - 94 * g - 18 * b + 128) shr 8) + 128
