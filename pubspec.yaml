@@ -10,14 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   
-  video_editor: ^1.5.0       # For video creation from images
-
-  gallery_saver: ^2.3.2
-
-  # Camera access
   camera: ^0.10.5+5
-  
-  # File paths
   path_provider: ^2.1.1
 
 dev_dependencies:
